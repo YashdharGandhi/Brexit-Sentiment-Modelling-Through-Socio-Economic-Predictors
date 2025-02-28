@@ -1,0 +1,1019 @@
+---
+title: "MATH5743M: Statistical Learning - Assessed Practical II"
+author: "Yashdhar Gandhi 201783891"
+date: "2024-04-24"
+output :
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+bibliography: pericles_193900682.bib
+
+    
+---
+Student Number: “201783891” Email: ‘mm23ysg@leeds.ac.uk’
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning=FALSE)
+knitr::opts_chunk$set(
+  fig.width = 12,
+  fig.height = 8,
+  fig.margin = c(1, 1, 1, 1)
+)
+
+
+```
+
+
+# Introduction
+The 2016 Brexit vote was a watershed point in British history, sparking debate and discussions over the country's membership in the European Union. The unexpected result, with the majority voting in favour of leaving the EU, triggered a flurry of analysis aiming at determining the underlying elements motivating this decision. In order to get insight into voting patterns in several UK electoral wards, we conducted a thorough statistical analysis of demographic and socioeconomic characteristics in this research.
+
+We have used electoral ward-level statistics from the UK's Brexit referendum, also known as the EU referendum. We investigate six significant characteristics for each ward, including the proportion of people in ABC1 social classes, median income, median age, proportion of inhabitants with higher education, proportion of residents born outside the UK, and Brexit vote results. Our goal is to provide insight into the intricate relationship between voting preferences and demographic traits by looking at these variables and their relationships.
+
+
+# Data Description
+ The dataset includes electoral ward-level statistics from the UK's 2016 EU referendum, also known as "Brexit." Each row in the dataset represents an election ward, with six attributes:
+
+1. ABC1: The proportion of people in the ABC1 socioeconomic class (middle to upper).
+2. medianIncome: The average income of all residents in the ward.
+3. medianAge: The median age of the ward's residents.
+4. withHigherEd: The percentage of residents with any university-level education.
+5. notBornUK: The proportion of residents who were born outside of the UK.
+6. voteBrexit: The target variable indicating if the ward voted for Brexit, with TRUE or FALSE values depending on whether more than 50% of voters chose to leave.
+
+The input variables (abc1, medianIncome, medianAge, withHigherEd, notBornUK) are normalised so that the lowest and highest values are zero and one, respectively.
+
+In addition to the previously specified input variables, the dataset contains an output variable termed voteBrexit. With values of TRUE or FALSE, this variable indicates if each electoral ward voted in favour of Brexit. It displays the results of our analysis, with TRUE indicating that more than half of the ward's residents voted to leave the EU and FALSE indicating otherwise.
+
+# Task 1: K-means Clustering :
+
+## Validation of Optimal Number of Clusters
+We used K-means clustering with different seed values to discover the optimal number of clusters. However, we found that as the number of seeds increased, so did the number of clusters. While this strategy resulted in more clusters, it also increased the risk of erroneous cluster formation and warned of potential chi-squared inaccuracy. To assure the consistency of our results, we used a fixed random seed value of 10. 
+
+We applied the gap statistic method to get the ideal number of clusters for the K-means algorithm. In this procedure, a reference null distribution produced by Monte Carlo sampling is compared to the within-cluster dispersion of the data. We looked at a range of K values from 2 to 10 and chose the number of clusters with the highest gap statistic.
+
+The optimal number of clusters determined using this approach is 3.
+
+```{r ValidationTask1, echo=FALSE}
+set.seed(10)
+# Load the necessary libraries
+
+library(cluster)
+
+# Load the dataset
+data <- read.csv("brexit.csv")
+
+# Data Cleaning: Remove rows with NULL values or 0
+clean_data <- data[complete.cases(data) & apply(data[, c("abc1", "medianIncome", "medianAge", "withHigherEd", "notBornUK")] != 0, 1, all), ]
+
+# Extract input variables for clustering
+input_data <- clean_data[, c("abc1", "medianIncome", "medianAge", "withHigherEd", "notBornUK")]
+
+# Define the range of K values to consider
+k_range <- 2:10
+
+# Initialize vectors to store gap statistic values
+gap_stat_values <- numeric(length(k_range))
+
+# Perform K-means clustering for each value of K and calculate gap statistic
+for (i in 1:length(k_range)) {
+  k <- k_range[i]
+  kmeans_result <- kmeans(input_data, centers = k, nstart = 25)
+  gap_stat_values[i] <- clusGap(input_data, FUN = kmeans, K.max = k, B = 50)$Tab[,"gap"]
+}
+
+# Find the optimal number of clusters where gap statistic is maximized
+optimal_k <- k_range[which.max(gap_stat_values)]
+
+# Perform K-means clustering with optimal K
+kmeans_result <- kmeans(input_data, centers = optimal_k, nstart = 25)
+
+# View the cluster centers
+kmeans_centers <- kmeans_result$centers
+
+# Merge Clusters with Voting Outcomes
+# Assuming the column with Brexit voting outcomes is named "voteBrexit"
+# Since there's no "ElectoralWard" column, we'll use row numbers as a unique identifier
+cluster_data <- data.frame(clean_data, Cluster = kmeans_result$cluster)
+merged_data <- merge(cluster_data, clean_data[, c("voteBrexit")], by.x = 0, by.y = 0)
+
+# Analysis: Assess the association between clusters and voting outcomes
+# For example, using a contingency table and chi-square test
+table <- table(merged_data$Cluster, merged_data$voteBrexit)
+chi_sq <- chisq.test(table)
+
+# Print contingency table and chi-square test results
+print("Contingency Table:")
+print(table)
+print("Chi-Square Test Results:")
+print(chi_sq)
+
+
+
+
+cluster_data_1 <- cbind(input_data, Cluster = kmeans_result$cluster)
+
+medians_by_cluster <- aggregate(. ~ Cluster, data = cluster_data_1, FUN = median)
+
+# Display the median values by cluster
+print("Median Values by Cluster:")
+print(medians_by_cluster)
+
+```
+## Visualize the Clusters
+```{r visualization , echo=FALSE}
+
+# Visualization: Visualize the clusters using scatter plot
+plot(input_data[,1], input_data[,2], col = kmeans_result$cluster, 
+     main = "K-means Clustering with Optimal Number of Clusters",
+     xlab = "abc1", ylab = "medianIncome")
+points(kmeans_centers[,1], kmeans_centers[,2], col = 1:optimal_k, pch = 8, cex = 2)
+legend("topright", legend = paste("Cluster", 1:optimal_k), col = 1:optimal_k, pch = 5)
+
+
+
+# Filter data for Cluster 1
+cluster_1_data <- subset(merged_data, Cluster == 1)
+
+# Calculate the count of wards voting for Brexit (TRUE) and against Brexit (FALSE) in Cluster 1
+cluster_1_counts <- table(cluster_1_data$voteBrexit)
+
+cluster_2_data <- subset(merged_data, Cluster == 2)
+
+# Calculate the count of wards voting for Brexit (TRUE) and against Brexit (FALSE) in Cluster 2
+cluster_2_counts <- table(cluster_2_data$voteBrexit)
+
+cluster_3_data <- subset(merged_data, Cluster == 3)
+
+# Calculate the count of wards voting for Brexit (TRUE) and against Brexit (FALSE) in Cluster 3
+cluster_3_counts <- table(cluster_3_data$voteBrexit)
+
+ylim <- c(0, 150)
+# Create a new plotting area with 1 row and 3 columns
+par(mfrow = c(1, 3))
+
+# Plot for Cluster 1
+barplot(cluster_1_counts,
+        ylim = ylim,
+        main = "Cluster 1",
+        xlab = "Vote for Brexit",
+        ylab = "Count",
+        col = c("blue", "red"),
+        legend.text = c("TRUE", "FALSE"))
+
+# Plot for Cluster 2
+barplot(cluster_2_counts, 
+        ylim = ylim,
+        main = "Cluster 2",
+        xlab = "Vote for Brexit",
+        ylab = "", # Suppress y-axis label for clarity
+        col = c("blue", "red"),
+        legend.text = c("TRUE", "FALSE"))
+
+# Plot for Cluster 3
+barplot(cluster_3_counts, 
+        ylim = ylim,
+        main = "Cluster 3",
+        xlab = "Vote for Brexit",
+        ylab = "", # Suppress y-axis label for clarity
+        col = c("blue", "red"),
+        legend.text = c("TRUE", "FALSE"))
+
+
+
+
+```
+The breakdown of Brexit votes per cluster reveals diverse voting trends and preferences. Clusters 2 and 3 show a clear preference for Brexit, with the majority of wards preferring to leave the EU. Cluster 1 has a lower proportion of wards backing Brexit, demonstrating a difference in voting behaviour from the other clusters. These data indicate that demographic makeup, socioeconomic level, and regional variables may influence Brexit voting decisions within distinct clusters.
+
+## Analysis of the Validated K-means Model
+
+
+1. **Interpreting Cluster Centers:**
+    Cluster 1:
+Median ABC1 proportion: 0.364
+Median income: £22,680.41
+Median age: 59.09 years
+Proportion with higher education: 25.00%
+Proportion not born in the UK: 6.72%
+    Cluster 2:
+Median ABC1 proportion: 0.687
+Median income: £50,000.00
+Median age: 27.27 years
+Proportion with higher education: 55.26%
+Proportion not born in the UK: 28.99%
+    Cluster 3:
+Median ABC1 proportion: 0.297
+Median income: £19,329.90
+Median age: 54.55 years
+Proportion with higher education: 20.39%
+Proportion not born in the UK: 5.88%
+
+
+
+2. **Association between Clusters and Voting Outcomes:**
+Chi-Square Test Results:
+X-squared = 65.699, df = 2, p-value = 5.414e-15
+A very low p-value (5.414e-15, or about 0) indicates strong evidence against the null hypothesis. In other words, it suggests that the observed correlation between the clusters and the voting results is statistically significant.
+We used K-means clustering and found that the best number of clusters (K) is 3. We then used a contingency table and Pearson's chi-squared test to assess the relationship between the generated clusters and Brexit vote results.
+The contingency table displays the distribution of Brexit vote results within each cluster. Pearson's chi-squared test returned a highly significant p-value.
+
+3. **Interpretation:**
+Cluster 1 comprises regions with a median age of roughly 59 years, older populations, and lower percentages of those in ABC1 socioeconomic classes, higher educated, and non-UK natives. Additionally, the median income in these places is lower, suggesting possible socioeconomic difficulties.
+
+Cluster 2 includes places with younger populations, with a median age of roughly 27 years, as well as a higher proportion of people in ABC1 social classes, with higher education, and who were not born in the UK. These areas have much higher median income levels, indicating greater financial stability and wealth.
+
+Cluster 3 exhibits a combination of demographic and socioeconomic traits, with median ages and incomes falling between Clusters 1 and 2. This cluster does, however, also show reduced percentages of those in ABC1 social classes, higher education, and non-UK birthplace.
+
+Overall, the clustering approach highlights differences in age, income, education, and immigrant status by exposing unique patterns in demographic and socioeconomic characteristics across various locations. These differences highlight the significance of taking into account a variety of socioeconomic situations when analysing electoral outcomes and are expected to have a major influence on voting behaviours and attitudes towards Brexit.
+
+
+# Task 2: Logistic Regression Model
+
+
+## Fit a Logistic Regression Model
+```{r Task2, echo=FALSE}
+# Fit Logistic Regression Model
+logit_model <- glm(voteBrexit ~ abc1 + medianIncome + medianAge + withHigherEd + notBornUK + as.factor(kmeans_result$cluster), 
+                   data = clean_data, family = binomial)
+
+# Print Model Summary
+summary(logit_model)
+
+# Interpret Coefficients
+print("Interpreting Coefficients:")
+print(coef(logit_model))
+
+# Assess Significance of Coefficients
+print("Assessing Significance of Coefficients:")
+print(summary(logit_model)$coefficients[, c("Estimate", "Pr(>|z|)")])
+
+# Identify Variables with Strong Effects
+significant_vars <- summary(logit_model)$coefficients[summary(logit_model)$coefficients[, "Pr(>|z|)"] < 0.05, ]
+print("Variables with Significant Effects:")
+print(significant_vars)
+
+# Comparison with Guardian Plots
+# Compare with Guardian Demographic Characteristics
+
+# Define variable names corresponding to coefficients
+variable_names <- c("Intercept", "abc1", "medianIncome", "medianAge", "withHigherEd", "notBornUK", "Cluster2", "Cluster3")
+
+# Extract coefficients and standard errors
+coefficients <- coef(summary(logit_model))[, "Estimate"]
+standard_errors <- coef(summary(logit_model))[, "Std. Error"]
+
+# Print coefficients and standard errors
+print("Coefficients:")
+print(coefficients)
+
+print("Standard Errors:")
+print(standard_errors)
+
+# Print comparison with Guardian Demographic Characteristics
+print("Comparison with Guardian Demographic Characteristics:")
+
+# % Residents with Higher Education
+higher_ed_result <- coefficients[variable_names == "withHigherEd"]
+print(paste("% Residents with Higher Education:", higher_ed_result))
+
+# % Residents with No Formal Qualifications
+# Assuming noFormalQual is represented by the inverse of withHigherEd
+no_qualifications_result <- coefficients[variable_names == "withHigherEd"] * -1
+print(paste("% Residents with No Formal Qualifications:", no_qualifications_result))
+
+# Median Annual Income of Residents
+income_result <- coefficients[variable_names == "medianIncome"]
+print(paste("Median Annual Income of Residents:", income_result))
+
+# % Residents of ABC1 Social Grade
+abc1_result <- coefficients[variable_names == "abc1"]
+print(paste("% Residents of ABC1 Social Grade:", abc1_result))
+
+# Median Age of Residents
+age_result <- coefficients[variable_names == "medianAge"]
+print(paste("Median Age of Residents:", age_result))
+
+# % Residents Not Born in the UK
+not_born_uk_result <- coefficients[variable_names == "notBornUK"]
+print(paste("% Residents Not Born in the UK:", not_born_uk_result))
+
+# Interpretation of Cluster Effects
+# Cluster 2
+cluster2_effect <- coefficients[variable_names == "Cluster2"]
+print(paste("Effect of Cluster 2:", cluster2_effect))
+
+# Cluster 3
+cluster3_effect <- coefficients[variable_names == "Cluster3"]
+print(paste("Effect of Cluster 3:", cluster3_effect))
+
+
+```
+## Summary of the Model
+**Null and Residual Deviance:**
+The null deviation refers to the difference in likelihood ratio statistics between the null model (with only the intercept) and the current model. The null deviation in our situation is 414.16 across 335 degrees of freedom. This suggests that the original model, which just has the intercept term, has a 414.16 deviation.
+What separates the current model from the saturated model (the model with perfect fit) in terms of likelihood ratio statistics is represented by the residual deviation. In our scenario, the residual deviation is 233.57 on 328 degrees of freedom, showing that our model accounts for a considerable percentage of the variability in the outcome variable (Brexit vote). A smaller residual deviation shows that the model is better fitted to the data than the null model.
+
+**Model Fit (AIC):**
+AIC, or the Akaike Information Criterion, is a model quality metric that penalises models based on their complexity.The Akaike Information Criterion, AIC, was introduced by Hirotogu Akaike in his seminal 1973 paper “Information Theory and an Extension of the Maximum Likelihood Principle.”[@akaike2011]
+A model with a lower AIC score fits data better. Our model has an AIC of 249.57, which is less than that of the null model. This shows that our model fits the data better than the null model, which adds to its reliability in explaining the outcome variable.
+
+The decreased AIC value and the considerable decrease in deviance from the null model to our fitted model show that our logistic regression model successfully explains the link between the predictor variables (demographic and socioeconomic factors) and the probability of voting Brexit. This shows that the variables included in the dataset help to explain the voting behaviour observed.
+
+**Coefficients and Significance:**
+
+**Intercept:**
+The intercept shows the estimated log-odds of the outcome variable (Brexit vote) when all predictor variables are set to zero. In our model, the intercept is 0.5947, although it is not statistically significant (p = 0.788). This implies that when all predictor factors are zero, the log-odds of voting for Brexit do not differ significantly from zero.
+Predictor variables (abc1, medianIncome, medianAge, withHigherEducation, notBornUK):
+The coefficient for each predictor variable is the change in the log-odds of the outcome variable caused by a one-unit increase in that predictor, while keeping all other predictors constant.
+For every one-unit rise in the proportion of residents in the ABC1 social grade (abc1), the log-odds of voting for Brexit increases by about 13.54 (p < 0.001).
+Similarly, every one-unit increase in median age (medianAge) results in a substantial rise of around 6.20 in the log-odds of voting for Brexit (p < 0.001).
+A one-unit increase in the proportion of inhabitants with higher education (withHigherEd) results in a substantial decrease of about 27.72 in the log-odds of voting for Brexit (p < 0.001).
+The median income (medianIncome) has a strong negative impact on the log-odds of voting for Brexit, with a 6.88 drop for every one-unit rise in income (p < 0.001).
+The proportion of residents not born in the UK (notBornUK) has a significant positive effect on the log-odds of voting for Brexit, increasing by approximately 8.07 for every one-unit rise in the proportion of people not born in the UK (p = 0.004).
+**Cluster Effects:**
+The coefficients for cluster effects show the difference in log-odds of voting for Brexit between each cluster and the reference cluster (Cluster 1), while all other variables remain constant.
+Cluster 2 has a comparatively larger log-odds of voting for Brexit than Cluster 1, but the difference is not statistically significant.
+Cluster 3 has a minor influence of about 0.14 on the log-odds of voting for Brexit compared to Cluster 1, which is not statistically significant (p = 0.929).
+
+
+## Visualization of Coefficients
+```{r task2_visualize, echo=FALSE}
+knitr::opts_chunk$set(message=FALSE)
+
+# Extract variable names from coefficients
+variable_names <- names(coefficients)
+
+# Create data frame with variable names and coefficients
+coefficients_df <- data.frame(variable = variable_names, coefficient = coefficients)
+
+# Add standard errors to the data frame
+coefficients_df$std_error <- standard_errors[variable_names]
+
+# Print the data frame
+print(coefficients_df)
+# Merge data frames
+
+
+# Combine coefficients and standard errors into a data frame
+coefficients_df <- data.frame(
+  variable = names(coefficients),
+  coefficient = coefficients,
+  std_error = standard_errors
+)
+
+# Create the bar plot
+library(ggplot2)
+coefficients_plot <- ggplot(coefficients_df, aes(x = variable, y = coefficient)) +
+  geom_bar(stat = "identity", fill = "skyblue", color = "black") +
+  geom_errorbar(aes(ymin = coefficient - std_error, ymax = coefficient + std_error), 
+                width = 0.2, color = "black") +
+  labs(x = "Variable", y = "Coefficient") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Coefficients and Standard Errors") +
+  coord_flip()
+
+# Print the plot
+print(coefficients_plot)
+
+
+
+```
+
+
+## Interpretation of Coefficients
+
+**% Residents with Higher Education:** The logistic regression model has a coefficient for "withHigherEd" of -26.49. This means that for every one-unit rise in the number of residents with higher education, the log odds of voting Leave fall by 26.49. This supports the Guardian's conclusion that places with higher levels of education tended to vote Remain.
+
+**% Residents with No Formal Qualifications:**Because we don't have a direct coefficient for this variable, we can infer it by subtracting the negative coefficient for "withHigherEd", which is likewise -26.49. This means that for every one-unit increase in the number of residents without formal qualifications, the log-odds of voting Leave rises by 26.49.
+
+**Median Annual Income of Residents:** TThe coefficient for "medianIncome" is -6.43. This means that for every one unit rise in median yearly income, the log-odds of voting Leave reduces by 6.43. This supports the Guardian's conclusion that places with higher incomes tended to favour Remain.
+
+**% Residents of ABC1 Social Grade:** The coefficient for "abc1" is 17.47. This indicates that the log-odds of voting leave rise by 17.47 for every unit increase in the proportion of residents in the ABC1 social grade. This conflicts with the Guardian's observation that places with higher social grades tended to favor Remain.
+
+**Median Age of Residents:** The coefficient of "medianAge" is 5.94. This means that for every one-unit increase in inhabitants' median age, the log-odds of voting Leave rises by 5.94. This is in line with the Guardian's assessment that older people tended to vote Leave.
+
+**% Residents Not Born in the UK:** TThe coefficient for "notbornUK" is 5.84. This means the log-odds of voting leave rise by 5.84 for every unit increase in the proportion of residents who were not born in the UK. This agrees with the observation made by the Guardian that Remain was more likely to be voted for in regions where a larger proportion of the population was born outside of the UK.
+These comparisons shed light on the relationship between each demographic trait and the probability of voting remain or leave.
+
+## Comparison with Guardian's Plots
+
+```{r gurdians plot, echo=FALSE}
+library(ggplot2)
+library(cowplot)
+library(gridExtra)
+
+
+# Create a function to add a median line to the plot
+add_median_line <- function(plot, data, x, y) {
+  median_value <- median(data[[x]])
+  plot + 
+    geom_vline(xintercept = median_value, linetype = "dotted", color = "black") +
+    geom_text(aes(x = median_value, y = 0.5, label = round(median_value, 2)), vjust = -1)
+}
+
+# Plot 1: Percentage of residents with higher education
+plot1 <- ggplot(clean_data, aes(x = withHigherEd, y = withHigherEd, color = voteBrexit)) +
+  geom_point(alpha = 0.5) +
+  labs(x = "Percentage of residents with higher education", y = "") +
+  scale_color_manual(values = c("yellow", "dodgerblue2"), labels = c("remain", "leave")) +
+  theme_minimal()
+plot1_with_median <- add_median_line(plot1, clean_data, "withHigherEd", "withHigherEd")
+
+# Plot 2: Percentage of residents with no formal qualifications
+plot2 <- ggplot(clean_data, aes(x = notBornUK, y = notBornUK, color = voteBrexit)) +
+  geom_point(alpha = 0.5) +
+  labs(x = "Percentage of residents with no formal qualifications", y = "") +
+  scale_color_manual(values = c("yellow", "dodgerblue2"), labels = c("remain", "leave")) +
+  theme_minimal()
+plot2_with_median <- add_median_line(plot2, clean_data, "notBornUK", "notBornUK")
+
+# Plot 3: Median annual income of residents
+plot3 <- ggplot(clean_data, aes(x = medianIncome, y = medianIncome, color = voteBrexit)) +
+  geom_point(alpha = 0.5) +
+  labs(x = "Median annual income of residents", y = "") +
+  scale_color_manual(values = c("yellow", "dodgerblue2"), labels = c("remain", "leave")) +
+  theme_minimal()
+plot3_with_median <- add_median_line(plot3, clean_data, "medianIncome", "medianIncome")
+
+# Plot 4: Percentage of residents of ABC1 social grade
+plot4 <- ggplot(clean_data, aes(x = abc1, y = abc1, color = voteBrexit)) +
+  geom_point(alpha = 0.5) +
+  labs(x = "Percentage of residents of ABC1 social grade", y = "") +
+  scale_color_manual(values = c("yellow", "dodgerblue2"), labels = c("remain", "leave")) +
+  theme_minimal()
+plot4_with_median <- add_median_line(plot4, clean_data, "abc1", "abc1")
+
+# Plot 5: Median age of residents
+plot5 <- ggplot(clean_data, aes(x = medianAge, y = medianAge, color = voteBrexit)) +
+  geom_point(alpha = 0.5) +
+  labs(x = "Median age of residents", y = "") +
+  scale_color_manual(values = c("yellow", "dodgerblue2"), labels = c("remain", "leave")) +
+  theme_minimal()
+plot5_with_median <- add_median_line(plot5, clean_data, "medianAge", "medianAge")
+
+# Plot 6: Percentage of residents not born in the UK
+plot6 <- ggplot(clean_data, aes(x = notBornUK, y = notBornUK, color = voteBrexit)) +
+  geom_point(alpha = 0.5) +
+  labs(x = "Percentage of residents not born in the UK", y = "") +
+  scale_color_manual(values = c("yellow", "dodgerblue2"), labels = c("remain", "leave")) +
+  theme_minimal()
+plot6_with_median <- add_median_line(plot6, clean_data, "notBornUK", "notBornUK")
+
+# Arrange plots using grid.arrange
+grid.arrange(plot1_with_median, plot2_with_median, plot3_with_median, plot4_with_median, plot5_with_median, plot6_with_median,
+             nrow = 2, ncol = 3)
+
+
+```
+The scatter plots shown here provides an insightful examination of demographic characteristics in relation to the binary voting outcome "leave" or "remain." An understanding of the patterns and correlations in the dataset may be gained from each figure, which represents a different demographic variable ranging from median age to educational attainment.
+
+The plots are visually appealing, with points colored according on the vote outcome, making it simple to grasp the relationship between each demographic component and voting behavior. The plots efficiently distinguish between the two outcomes by using a light blue for "leave" and yellow for "remain," allowing for clear interpretation and analysis.
+
+Including median lines in each figure gives another level of comprehension. These lines illustrate each demographic variable's central tendency, suggesting where the data is most tightly clustered. The dotted lines act as visual signals, drawing attention to the median value while also indicating areas of substantial concentration or dispersion within the sample
+
+Additionally, the plots are easier to understand when median lines are included since they facilitate comparisons between various demographic factors and the rapid identification of central tendencies. The median line, for instance, may indicate a demographic trend or preference if it is closer to one end of the x-axis, indicating that a sizable fraction of the population falls within that range.
+
+
+**Comparison with Guardian Plots:**
+
+Both the Guardian's maps and our analysis show that various major demographic indicators had a significant impact on the Brexit vote outcome. The scatter plots from the Guardian provided graphic insights into the correlations between numerous socioeconomic indicators and the likelihood of voting to remain or leave the EU. Here we present a comparison of our results with the Guardian plots:
+
+**Education Level:**
+Similar to the Guardian plots, our data demonstrates a strong correlation between voting behaviour and education level. Whereas places with a smaller proportion tended to vote to depart, those with a higher percentage of residents with higher education were more likely to vote to stay in office. This supports the Guardian's finding that educational attainment was a strong predictor of the Brexit vote.
+
+**Income Level:**
+Likewise, the Guardian graphs and our data also show a positive relationship between voting to stay in office and median annual income. Voters were more likely to stay in areas with higher median earnings than to move away from those with lower median incomes. As stated in the Guardian piece, this shows that income level had a significant impact on voting behaviour.
+
+**Social Class:**
+Our research backs up the Guardian's claim that socioeconomic class had an impact on the Brexit vote. places with a higher number of middle and upper-class residents were more likely to vote remain, while places with a lesser proportion voted out. This emphasises how important social class is in influencing voting choices, as the Guardian maps make clear.
+
+**Immigration:**
+Our data, as well as the Guardian plots, show a link between the percentage of non-UK-born residents and voting behaviour. Greater percentages of foreign-born residents tended to vote stay, while smaller percentages tended to vote depart. This shows that opinions towards immigration influenced the outcome of the Brexit vote, as illustrated in the Guardian story.
+
+**Age:**
+There was a minor trend for younger areas to vote stay and older areas to vote leave, even though the association between median age and voting outcome was less evident in our research and the Guardian maps. This suggests that age demographics may have influenced voting behaviour, though to a lower amount than other aspects..
+
+All things considered, the parallel with the Guardian charts highlights how crucial socioeconomic variables like age, social class, money, education, and immigration were in determining the outcome of the Brexit poll. We obtain a more thorough grasp of the fundamental dynamics influencing the Brexit decision by comparing our results with those given in the Guardian article.
+
+# Task 3: Interpretability of the Regression Coefficients
+
+
+## Factors Affecting Interpretability Factors Affecting Interpretability of Regression Coefficients:
+
+**1. Multicollinearity:**
+
+```{r 1. Multicollinearity:, echo=FALSE}
+# Compute Variance Inflation Factors (VIFs)
+vif_values <- car::vif(logit_model)
+
+# Print VIF values
+print("Variance Inflation Factors:")
+print(vif_values)
+
+
+```
+ 
+The term multicollinearity was introduced by Ragnar Frisch, meaning that there is perfect linear relationship among some or all explanatory variables.[@alin2010multicollinearity] When there is a strong correlation between the independent variables in a regression model, it is known as multicollinearity. Regression coefficients may become less interpreted as a result, and estimations may become unstable. For every predictor variable, the Variance Inflation Factors (VIFs) were calculated in order to evaluate multicollinearity.
+
+Variance Inflation Factors (VIFs):
+Predictor Variable	VIF Value
+abc1	9.695
+medianIncome	2.731
+medianAge	3.285
+withHigherEd	8.115
+notBornUK	6.971
+Cluster	12.441
+
+
+Higher VIF values (> 5) indicate significant multicollinearity. In this analysis, variables such as abc1, withHigherEd, notBornUK, and Cluster exhibit high multicollinearity, potentially affecting the reliability of their regression coefficients.
+
+
+
+
+**2. Nonlinearity:**
+
+```{r 2. Nonlinearity:, echo=FALSE}
+# Create residual plots to assess linearity
+par(mfrow=c(2,2))
+plot(logit_model)
+
+```
+**Residuals vs Fitted:**
+This graph plots the residuals (the difference between observed and anticipated values) versus the regression model's fitted or expected values. The plot has a slightly curved pattern, which could suggest nonlinearity in the data. This nonlinearity can have an impact on the interpretation of regression coefficients since the linear model may not adequately capture the underlying relationship.
+
+**Q-Q Residuals:**
+A comparison between the residuals' distribution and the theoretical normal distribution is made using the Q-Q (Quantile-Quantile) plot. If the residuals are properly distributed, the points should fall along the diagonal. The points depart from the diagonal line, particularly in the tails, implying that the residuals are not normally distributed. When the normalcy assumption is broken, the reliability of the statistical conclusions drawn from the regression model—including how the coefficients should be interpreted—may be compromised.
+
+**Scale-Location:**
+This graphic illustrates the link between the fitted values (on the x-axis) and the square root of the standardised residuals (on the y-axis). If the premise of constant variance (homoscedasticity) is true, the points should be distributed randomly, with no discernible pattern. Our plot appears to have a little funnel-shaped pattern, which could imply heteroscedasticity (non-constant variance). Heteroscedasticity can cause inefficient coefficient estimation and erroneous standard errors, reducing the coefficients' interpretability.
+
+**Residuals vs Leverage:**
+The residuals, which quantify the impact of each observation on the fitted values, are plotted against the leverage values in this figure. The graphic aids in identifying influential observations and probable outliers. The curvy line in our map shows Cook's distance, which estimates the overall influence of each observation. The observation indicated with 118 looks to have a high leverage value and could be impactful. The regression coefficients may be disproportionately affected by influential observations, which could have an effect on how interpretable the results are.
+
+In conclusion, the diagnostic plots indicate the presence of nonlinearity, a breach of the normalcy assumption, possible heteroscedasticity, and influential observations in your data. These characteristics can have an impact on the interpretability of regression coefficients, thus you may need to investigate alternate modelling approaches or modifications to address them. Ignoring these parameters may result in biased or erroneous interpretations of the regression coefficients.
+
+**3. Outliers and Influential Points:**
+
+```{r 4. Outliers and Influential Points: , echo=FALSE}
+# Compute Cook's distance
+cooks_distance <- cooks.distance(logit_model)
+
+# Identify influential points based on Cook's distance
+influential_points <- which(cooks_distance > 4/nrow(clean_data))
+
+# Print influential points based on Cook's distance
+print("Influential Points Based on Cook's Distance:")
+print(influential_points)
+
+
+```
+Outliers and key points can have a major impact on regression coefficients and model fit. The Cook's distance was calculated to highlight influential observations.
+The noticed key points have a significant impact on regression coefficients and model fit. These findings should be carefully evaluated in subsequent analyses to ensure the dependability of the results.
+
+
+## Reliability of Determining Relevant Inputs:
+**1. Statistical Significance:**
+Bootstrap resampling was used to determine the dependability of regression results and the statistical significance of predictors.
+To calculate confidence intervals and hypothesis tests, bootstrap samples were created and regression models were trained on them.
+The standard errors and coefficient estimates were combined for all bootstrap samples.
+To establish coefficient statistical significance, confidence intervals and hypothesis tests were used.
+
+```{r significance, echo=FALSE,include=FALSE}
+
+# Step 1: Generate Bootstrap Samples
+n_bootstraps <- 100  # Number of bootstrap samples
+bootstrap_samples <- lapply(1:n_bootstraps, function(i) sample(1:nrow(clean_data), replace = TRUE))
+
+# Step 2: Train Regression Models on Bootstrap Samples
+models <- lapply(bootstrap_samples, function(indices) {
+  sample_data <- clean_data[indices, ]
+  model <- lm(voteBrexit ~ abc1 + medianIncome + medianAge + withHigherEd + notBornUK, data = sample_data)  # Assuming voteBrexit is your outcome variable
+  return(model)
+})
+
+# Step 3: Aggregate Coefficient Estimates and Standard Errors
+coefficients <- sapply(models, coef)
+coefficients_mean <- colMeans(coefficients)
+coefficients_sd <- apply(coefficients, 1, sd)
+
+# Step 4: Compute Confidence Intervals and Hypothesis Tests
+confidence_intervals <- cbind(coefficients_mean - 1.96 * coefficients_sd, coefficients_mean + 1.96 * coefficients_sd)
+
+confidence_intervals
+p_values <- 2 * pnorm(-abs(coefficients_mean / coefficients_sd))  # Two-sided hypothesis tests
+
+```
+**Effect Size:**
+Effect sizes were calculated to assess the practical significance of predictor variables.
+Average Coefficients:
+To determine each predictor variable's overall effect magnitude, average coefficients across bootstrap samples were computed.
+Larger effect sizes suggest that predictors have stronger associations with the outcome.
+
+```{r effect size: , echo=FALSE,include=FALSE}
+# Step 1: Generate Bootstrap Samples (Already done in the previous step)
+
+# Step 2: Train Regression Models on Bootstrap Samples (Already done in the previous step)
+
+# Step 3: Aggregate Coefficients
+coefficients <- sapply(models, coef)
+
+# Step 4: Compute Average Coefficients
+average_coefficients <- colMeans(coefficients)
+average_coefficients
+# Step 5: Assess Effect Size
+effect_sizes <- abs(average_coefficients)
+effect_sizes
+```
+
+**3. Substantive Interpretation:**
+
+```{r 3. Substantive Interpretation:, echo=FALSE}
+
+# Review coefficients
+coefficients <- coef(logit_model)
+
+# Consider theoretical significance
+# For example, if 'abc1' represents a demographic characteristic that is known to influence the outcome based on theory or previous research, its coefficient may be considered theoretically significant.
+
+# Examine practical significance
+# Calculate the odds ratios for each variable to understand the practical impact on the outcome
+odds_ratios <- exp(coefficients)
+
+# Compare with existing knowledge
+# You can conduct a literature review or consult with domain experts to validate your findings.
+
+# Print coefficients and odds ratios
+print("Coefficients:")
+print(coefficients)
+print("Odds Ratios:")
+print(odds_ratios)
+
+
+```
+Interpreting coefficients and odds ratios helped to clarify the significant influence of predictor variables on the result.
+Theoretical significance and practical implications were evaluated, as well as comparisons to prior information from literature or domain experts.
+For example:
+The odds ratio of abc1 is approximately 7.61, indicating that for a one-unit increase in abc1, the odds of the outcome increase by a factor of approximately 7.61.
+
+**4. Model Performance:**
+
+```{r model performance, echo=FALSE}
+knitr::opts_chunk$set(message=FALSE)
+
+# Load necessary library for AUC calculation
+library(pROC)
+
+# Calculate AIC and BIC
+AIC_value <- AIC(logit_model)
+BIC_value <- BIC(logit_model)
+
+# Predict probabilities for the training data
+predicted_probs <- predict(logit_model, type = "response")
+
+# Calculate AUC
+AUC_value <- roc(clean_data$voteBrexit, predicted_probs)$auc
+
+# Print model performance metrics
+print("Model Performance Metrics:")
+print(paste("AIC:", AIC_value))
+print(paste("BIC:", BIC_value))
+print(paste("AUC:", AUC_value))
+
+
+```
+**Statistical Significance:**
+The statistical significance of an outcome measure is sometimes used as a measure of effect size. Outcomes receiving a statistically significant result are treated as being big, important effects, while outcomes that turn out not to be statistically significant are treated as being unimportant.[@valentine2003effect]
+
+P-values were used to evaluate the statistical significance of the logistic regression model's coefficients. For the coefficients to be statistically significant, the p-values should be less than 0.05. Further work is required to guarantee that these findings are correctly interpreted.
+
+**Effect Size:**
+Estimates of the magnitude and direction of the correlations between the predictors and the outcome variable are given by effect sizes, which are expressed as odds ratios. Positive odds ratios indicate a positive relationship with the outcome, whilst negative odds ratios imply a negative association. The odds ratios offered here show how much the probabilities of the outcome variable change for every one-unit change in the predictor variable.
+
+**Substantive Interpretation:**
+Evaluating each predictor's practical value requires interpreting the coefficients within the context of the problem area.
+
+In this model:
+
+The log chances of the result when none of the predictor variables are present are represented by the intercept.
+Keeping all other factors equal, every one-unit increase in abc1 increases the probabilities of the outcome by about 7.61.
+'MedianIncome' When all other variables are held equal, the probabilities of the result fall by about 0.001 for every one-unit increase in medianIncome.
+'MedianAge' Keeping all other factors equal, the probability of the outcome rise by a factor of around 491.33 for every unit increase in medianAge.
+'WithHigherEd' The probabilities of the outcome fall significantly in the presence of withHigherEd, showing a considerable negative impact on the outcome while keeping all other variables constant.
+'NotBornUK' Keeping all other factors equal, the probability of the outcome rise by a factor of around 3199.86 for every unit increase in notBornUK.
+
+
+**4. Model Performance:**
+Model performance was assessed using the AIC, BIC, and AUC measures.
+AIC has a classical origin whereas BIC arises as an approximation to a Bayes rule up to O(1) [@chakrabarti2011aic]
+Lower values of AIC and BIC, information criteria used to evaluate the model's goodness of fit, indicate a better fit.
+The AIC score of 249.57 implies that the model strikes an appropriate balance between fit and complexity.
+The BIC score of 280.10 indicates that the model is very simple while still providing a decent fit for the data.
+AUC measures a binary classification model's discriminatory power. It shows the likelihood that the model will rate a randomly picked positive instance higher than a randomly selected negative instance. A higher AUC value (closer to one) suggests that the model performs better at discrimination.  
+The AUC score of 0.891 indicates that the model is highly capable of distinguishing between the two groups, implying good prediction performance.
+
+## Ordering Input Variables Based on Relevance:
+Based on this analysis, the input variables can be ordered based on their relevance in predicting the outcome as follows:
+
+'abc1'
+'NotBornUK'
+'MedianAge'
+'MedianIncome'
+'WithHigherEd'
+This ordering is based on the magnitude of their effect sizes (odds ratios) and their substantive interpretation in the context of the problem domain.
+
+## Using Bagging for Logistic Regression: BAGGING for Logistic Regression
+
+```{r bagging, echo=FALSE}
+library(caret)
+
+library(boot)
+fit_logit <- function(data, indices) {
+  sample <- data[indices, ]
+  model <- glm(voteBrexit ~ ., data = sample, family = binomial)
+  coefficients <- coef(model)
+  return(coefficients)  # Return coefficients
+}
+
+
+
+
+
+# Set the number of bootstrap replicates
+R <- 1000
+
+# Perform bootstrapping
+boot_results <- boot(data = clean_data, statistic = fit_logit, R = R)
+# Initialize an empty matrix to store predictions
+boot_pred_manual <- matrix(NA, nrow = nrow(clean_data), ncol = R)
+
+# Loop over each bootstrapped model
+for (i in 1:R) {
+  # Extract coefficients from the ith bootstrapped model
+  coefficients_i <- boot_results$t[i, ]
+  
+  # Calculate log odds for each observation using the coefficients
+  log_odds_i <- as.matrix(clean_data) %*% coefficients_i
+  
+  # Apply inverse logit function to obtain predicted probabilities
+  pred_probs_i <- 1 / (1 + exp(-log_odds_i))
+  
+  # Store predicted probabilities in the ith column of boot_pred_manual
+  boot_pred_manual[, i] <- pred_probs_i
+}
+
+# Aggregate predictions across all bootstrap samples
+final_pred_manual <- apply(boot_pred_manual, 1, mean)
+
+boot_coefs <- boot_results$t
+coef_variability <- apply(boot_coefs, 2, sd)
+print(coef_variability)
+# Evaluate model performance
+# For example, calculate AUC
+library(pROC)
+auc <- roc(clean_data$voteBrexit, final_pred_manual)$auc
+print(paste("AUC is", auc))
+
+#
+```
+**AUC:** 
+The AUC of a classification function f expresses the probability that a randomly selected positive example gets a higher score by f than a randomly selected negative example. This measure has proven to be highly useful for evaluating classifiers, especially when class
+distributions are heavily skewed.[@calders2007efficient]
+It was discovered that the bagged logistic regression model's AUC value was 1. The model performed exceptionally well in terms of prediction, as evidenced by the perfect AUC value, which shows that it successfully distinguished between Brexit voters and non-voters in the dataset.
+Using bagging with logistic regression yielded a highly accurate model for identifying Brexit votes. The model has efficiently distinguished between people who voted for Brexit and those who did not, as evidenced by the perfect AUC value that was produced. It has also correctly caught the underlying patterns in the data.
+
+## Analysis of Variability in Regression Coefficients using Bagging for Logistic Regression
+
+We used the logistic regression model to examine the association between a number of predictor variables and the response variable, "voteBrexit." Bagging was used to analyse the variability in the regression coefficients. The predicted coefficients for each predictor variable are listed below:
+
+"abc1": The standard deviation of the coefficient estimate for "abc1" is roughly 0.757. This indicates that there is a tendency for the coefficient estimate for "abc1" to vary between bootstrap samples by around 0.757 units. A smaller standard deviation suggests greater stability and confidence in the computed coefficient.
+"notBornUK": With a standard deviation of roughly 2.920, the coefficient estimate for "notBornUK" As a result, it appears that the coefficient estimate for "notBornUK" is more variable between bootstrap samples than the one for "abc1." A larger standard deviation indicates that the calculated coefficient is less stable and more uncertain.
+"medianIncome": The "medianIncome" coefficient estimate's standard deviation is roughly 1.853. This implies that the coefficient estimate varies moderately between bootstrap samples.
+"medianAge": The standard deviation of the "medianAge" coefficient estimate is roughly 2.250. This indicates that, like "notBornUK," the coefficient estimate for "medianAge" varies somewhat between bootstrap samples.
+"withHigherEd": The standard deviation of the coefficent estimate for "withHigherEd" is roughly 1.337. This shows a moderate amount of variation in the "withHigherEd" coefficient estimate between bootstrap samples.
+Intercept: The intercept coefficient has a standard deviation of around 3.830, showing that it varies widely across bootstrap samples.
+
+
+# Task 4: Alternative Logistic Regression Approach
+
+```{r lasso_rigid, echo=FALSE}
+set.seed(10)  # for reproducibility
+train_index <- sample(1:nrow(clean_data), 0.7 * nrow(clean_data))  # 70% train, 30% test
+train_data <- clean_data[train_index, ]
+test_data <- clean_data[-train_index, ]
+
+# Scale the input variables
+# Exclude the "voteBrexit" column from the dataset
+train_data_scaled <- scale(train_data[, !colnames(train_data) %in% "voteBrexit"])
+test_data_scaled <- scale(test_data[, !colnames(test_data) %in% "voteBrexit"])
+
+
+library(glmnet)
+
+# Fit Lasso logistic regression model
+lasso_model <- cv.glmnet(x = train_data_scaled, y = train_data$voteBrexit, alpha = 1, family = "binomial")
+optimal_lambda_lasso <- lasso_model$lambda.min
+lasso_coefficients <- coef(lasso_model, s = optimal_lambda_lasso)[-1]  # Exclude intercept
+
+
+# Optimal lambda for Lasso
+lambda_lasso <- lasso_model$lambda.min
+print(paste("Optimal lambda for Lasso:", lambda_lasso))
+
+
+# Coefficients for Lasso model
+coef_lasso <- coef(lasso_model, s = lambda_lasso)
+
+
+
+lasso_coefficients <- as.matrix(coef(lasso_model)[-1])  # Exclude intercept
+
+# Get variable names
+variable_names <- colnames(train_data_scaled)
+
+
+
+# Order variables based on magnitude of coefficients for Lasso
+ordered_indices_lasso <- order(abs(lasso_coefficients), decreasing = TRUE)
+ordered_variables_lasso <- variable_names[ordered_indices_lasso]
+
+
+print("Ordered variables for Lasso:")
+print(ordered_variables_lasso)
+
+
+
+```
+```{r comparision, echo=FALSE}
+
+# Evaluate Lasso model
+lasso_pred <- predict(lasso_model, test_data_scaled, type = "response")
+lasso_auc <- roc(test_data$voteBrexit, lasso_pred)$auc
+lasso_accuracy <- sum((lasso_pred > 0.5) == test_data$voteBrexit) / length(test_data$voteBrexit)
+lasso_cv_deviance <- cv.glmnet(train_data_scaled, train_data$voteBrexit, alpha = 1, family = "binomial")
+
+# Calculate average cross-validated deviance
+avg_cv_deviance <- mean(lasso_cv_deviance$cvm)
+
+# Extract coefficients from the lasso model
+lasso_coef <- coef(lasso_model, s = lasso_cv_deviance$lambda.min)
+
+# Calculate the number of parameters (including intercept)
+n_params <- sum(lasso_coef != 0) + 1  # Add 1 for intercept
+
+# Calculate the log likelihood
+log_likelihood <- sum(log(lasso_pred) * test_data$voteBrexit + log(1 - lasso_pred) * (1 - test_data$voteBrexit))
+
+# Calculate AIC
+lasso_aic <- -2 * log_likelihood + 2 * n_params
+
+# Calculate BIC
+n_obs <- nrow(test_data_scaled)
+lasso_bic <- -2 * log_likelihood + log(n_obs) * n_params
+
+cat("Lasso Model Metrics:\n")
+cat("AUC:", lasso_auc, "\n")
+cat("Accuracy:", lasso_accuracy, "\n")
+cat("Average Cross-validated Deviance:", avg_cv_deviance, "\n")
+cat("AIC:", lasso_aic, "\n")
+cat("BIC:", lasso_bic, "\n")
+
+
+
+```
+
+```{r plotting, echo=FALSE}
+# Load necessary libraries
+library(ggplot2)
+library(cowplot)
+
+# Create a function to add a median line to the plot
+add_median_line <- function(plot, data, x, y) {
+  median_value <- median(data[[x]])
+  plot + 
+    geom_vline(xintercept = median_value, linetype = "dotted", color = "black") +
+    geom_text(aes(x = median_value, y = 0.5, label = round(median_value, 2)), vjust = -1)
+}
+
+# Plot 1: Percentage of residents with higher education
+plot_edu <- ggplot(test_data, aes(x = withHigherEd, y = withHigherEd, color = voteBrexit)) +
+  geom_point(alpha = 0.5) +
+  labs(x = "Percentage of residents with higher education", y = "") +
+  scale_color_manual(values = c("yellow", "dodgerblue2"), labels = c("remain", "leave")) +
+  theme_minimal()
+plot_edu_with_median <- add_median_line(plot_edu, test_data, "withHigherEd", "withHigherEd")
+
+# Plot 2: Percentage of residents with no formal qualifications
+plot_qual <- ggplot(test_data, aes(x = notBornUK, y = notBornUK, color = voteBrexit)) +
+  geom_point(alpha = 0.5) +
+  labs(x = "Percentage of residents with no formal qualifications", y = "") +
+  scale_color_manual(values = c("yellow", "dodgerblue2"), labels = c("remain", "leave")) +
+  theme_minimal()
+plot_qual_with_median <- add_median_line(plot_qual, test_data, "notBornUK", "notBornUK")
+
+# Plot 3: Median annual income of residents
+plot_income <- ggplot(test_data, aes(x = medianIncome, y = medianIncome, color = voteBrexit)) +
+  geom_point(alpha = 0.5) +
+  labs(x = "Median annual income of residents", y = "") +
+  scale_color_manual(values = c("yellow", "dodgerblue2"), labels = c("remain", "leave")) +
+  theme_minimal()
+plot_income_with_median <- add_median_line(plot_income, test_data, "medianIncome", "medianIncome")
+
+# Plot 4: Percentage of residents of ABC1 social grade
+plot_abc1 <- ggplot(test_data, aes(x = abc1, y = abc1, color = voteBrexit)) +
+  geom_point(alpha = 0.5) +
+  labs(x = "Percentage of residents of ABC1 social grade", y = "") +
+  scale_color_manual(values = c("yellow", "dodgerblue2"), labels = c("remain", "leave")) +
+  theme_minimal()
+plot_abc1_with_median <- add_median_line(plot_abc1, test_data, "abc1", "abc1")
+
+# Plot 5: Median age of residents
+plot_age <- ggplot(test_data, aes(x = medianAge, y = medianAge, color = voteBrexit)) +
+  geom_point(alpha = 0.5) +
+  labs(x = "Median age of residents", y = "") +
+  scale_color_manual(values = c("yellow", "dodgerblue2"), labels = c("remain", "leave")) +
+  theme_minimal()
+plot_age_with_median <- add_median_line(plot_age, test_data, "medianAge", "medianAge")
+
+# Plot 6: Percentage of residents not born in the UK
+plot_born <- ggplot(test_data, aes(x = notBornUK, y = notBornUK, color = voteBrexit)) +
+  geom_point(alpha = 0.5) +
+  labs(x = "Percentage of residents not born in the UK", y = "") +
+  scale_color_manual(values = c("yellow", "dodgerblue2"), labels = c("remain", "leave")) +
+  theme_minimal()
+plot_born_with_median <- add_median_line(plot_born, test_data, "notBornUK", "notBornUK")
+
+# Arrange plots using cowplot package
+plot_grid(plot_edu_with_median, plot_qual_with_median, plot_income_with_median, 
+          plot_abc1_with_median, plot_age_with_median, plot_born_with_median,
+          nrow = 2, ncol = 3)
+
+
+
+```
+**Higher Education:**
+The probability of voting to stay in the EU is positively correlated with the percentage of residents with a higher education, as this graphic demonstrates. Higher educated population proportions tended to vote stay, whereas lower educated population proportions voted leave.
+
+**No Formal Qualifications:**
+On the other hand, voting to stay is negatively correlated with the proportion of inhabitants who do not meet formal credentials. Whereas places with a lower percentage inclined to vote stay, areas with a higher proportion of inhabitants lacking formal qualifications were more likely to vote depart.
+
+**Median Annual Income:**
+The plot shows a positive relationship between voting to stay in office and median annual income. Whereas voting to leave was more common in places with lower median incomes, voting to stay was more common in areas with higher median incomes.
+
+**ABC1 Social Grade:**
+There is a high positive association between voting to remain and the social grade, a classification based on occupation. Those who worked in higher-paying professional, administrative, or managerial jobs (the ABC1 social grade) were more likely to vote remain in an area where their share was smaller than that of leave voters.
+
+**Median Age:**
+The association between median age and vote outcome is less obvious from this graph. There is, however, a minor trend for areas with a lower median age to stay in place and areas with a higher median age to move out.
+
+**Not Born in the UK:**
+The graph shows that voting to stay in the UK is positively correlated with the proportion of residents who were not born in the country. Areas having a higher number of foreign-born residents were more likely to vote stay, whilst areas with a lesser proportion voted out.
+
+The use of median lines in each figure emphasises the central tendency of the demographic variables, enabling for fast identification of places with higher or lower data point concentrations. These lines operate as visual signals that improve the plots' readability and make it easier to compare various demographic characteristics.
+
+## Discussion of Benefits and Disadvantages
+Based on the information provided and the visual representations in the images, we can make the following observations and comparisons between the original model and the alternative (Lasso) model:
+Findings:
+
+**Akaike Information Criterion (AIC):**
+
+The original model has a higher AIC value (249.566838828905) compared to the Lasso model (101.0961).
+A lower AIC value indicates a better fit and better model performance, so the Lasso model outperforms the original model in terms of AIC.
+
+
+**Bayesian Information Criterion (BIC):**
+
+The original model has a higher BIC value (280.103728108611) compared to the Lasso model (119.4019).
+Similar to AIC, a lower BIC value is preferred, indicating that the Lasso model performs better than the original model in terms of BIC.
+
+
+**Area Under the Curve (AUC):**
+
+The original model has a slightly higher AUC value (0.890662110921288) compared to the Lasso model (0.8315217).
+AUC is a measure of the model's ability to distinguish between classes, and a higher value is generally better.
+In this case, the difference in AUC values is relatively small, but the original model has a slight edge in terms of classification performance.
+
+
+
+**Advantages of the Lasso model:**
+
+Lower AIC and BIC values: In comparison to the original model, the Lasso model exhibits much lower AIC and BIC values, indicating a superior overall fit and model quality.
+Easier interpretation: The Lasso model selects features by reducing some coefficients to zero, making it easier to understand the most influential predictors.
+
+**Disadvantages of the Lasso model:**
+
+Slightly lower AUC: The Lasso model has a significantly lower AUC value than the original model, indicating somewhat poorer classification performance.
+Potentially biassed estimates: In some circumstances, the Lasso model can add bias into non-zero coefficient estimates, particularly when predictors have large correlations.
+
+Overall, based on these measures, the Lasso model looks to be a better choice because it has considerably lower AIC and BIC values, indicating a better overall fit and model quality. However, the original model might offer a little advantage because of its larger AUC value if classification performance is the main priority. When deciding between these two approaches, take into account the individual goals and trade-offs.
+
+# Conclusion
+
+To summarise, our extensive examination of demographic and socioeconomic determinants provided useful insights into voting behavior during the UK's Brexit referendum. Through the application of sophisticated statistical methods, we have identified subtle trends and correlations that emphasis the intricate relationship between a number of variables and the choice to leave or stay in the European Union.
+
+The results highlight the noteworthy impact of education, income, social class, age, and immigrant status on voting inclinations. Different regions with unique demographic characteristics demonstrate differing levels of support for Brexit. The results of the clustering study demonstrated that different clusters had varied voting patterns, and the logistic regression model successfully represented the association between predictor factors and the probability of voting for Brexit.
+
+Furthermore, our comparison to current research, such as those reported in The Guardian, highlights the relevance of socioeconomic considerations in affecting electoral outcomes. The use of different modelling approaches, such as Lasso regression, provides additional insights, emphasising the trade-offs between model performance and interpretation.
+
+Overall, our work adds to our knowledge of the Brexit phenomena and its underlying causes. Going forward, these observations can guide public debate, election tactics, and policy choices, promoting a more sophisticated and nuanced comprehension of the intricate forces at work in the political landscape of the United Kingdom. Developing a coherent and inclusive future for all residents will require a deep grasp of these variables as the nation navigates the opportunities and difficulties posed by Brexit.
+
+# References
