@@ -1,6 +1,6 @@
 ---
-title: "MATH5743M: Statistical Learning - Assessed Practical II"
-author: "Yashdhar Gandhi 201783891"
+title: " Can I eat the Mushroom?"
+author: "Yashdhar Gandhi"
 date: "2024-04-24"
 output :
   html_document:
@@ -11,7 +11,6 @@ bibliography: pericles_193900682.bib
 
     
 ---
-Student Number: “201783891” Email: ‘mm23ysg@leeds.ac.uk’
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_chunk$set(warning=FALSE)
