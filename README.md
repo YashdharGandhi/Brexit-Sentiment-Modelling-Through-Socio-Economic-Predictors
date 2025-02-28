@@ -1,6 +1,6 @@
 # Brexit Analysis Project
 
-This repository contains the work for the MATH5743M: Statistical Learning assessed practical project, which focuses on analyzing Brexit-related data. The project demonstrates industry-standard practices in data preprocessing, exploratory analysis, and statistical modeling, ensuring reproducibility and clear presentation of results.
+This repository contains Statistical Learning practical project, which focuses on analyzing Brexit-related data. The project demonstrates industry-standard practices in data preprocessing, exploratory analysis, and statistical modeling, ensuring reproducibility and clear presentation of results.
 
 ## Project Overview
 
