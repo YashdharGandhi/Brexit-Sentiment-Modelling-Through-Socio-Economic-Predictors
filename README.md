@@ -1,4 +1,6 @@
-# Brexit Analysis Project
+# Brexit Sentiment Modelling Through Socio-Economic Predictors
+
+## Brexit Analysis Project
 
 This repository contains Statistical Learning practical project, which focuses on analyzing Brexit-related data. The project demonstrates industry-standard practices in data preprocessing, exploratory analysis, and statistical modeling, ensuring reproducibility and clear presentation of results.
 
